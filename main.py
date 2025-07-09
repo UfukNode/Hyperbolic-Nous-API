@@ -1,49 +1,64 @@
-from core.generator import generate_question
-from core.responder import get_nous_response
-from core.logger import save_log
-from utils.cli import choose_models
-from utils.env_setup import load_env
-import time
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 import os
+import httpx
 
-class Renk:
-    MAVI = '\033[94m'
-    YESIL = '\033[92m'
-    SARI = '\033[93m'
-    KIRMIZI = '\033[91m'
-    RESET = '\033[0m'
+# API Key'i Railway ortam değişkenlerinden al
+HYPERBOLIC_API_KEY = os.getenv("HYPERBOLIC_API_KEY")
+if not HYPERBOLIC_API_KEY:
+    raise ValueError("❌ HYPERBOLIC_API_KEY bulunamadı! Railway'de environment variable eklemeyi unutma.")
 
-BEKLEME_SANIYE = 30
+# Uygulama başlat
+app = FastAPI(title="Hyperbolic API", version="1.0")
 
-def main():
-    load_env()
+# CORS ayarları (her yerden istek kabul eder)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-    print(Renk.MAVI + "Başlatılıyor..." + Renk.RESET)
-    print(Renk.SARI + "Nous modellerini seçin ve her model için rastgele üretilen sorularla cevaplarını kıyaslayın.\n" + Renk.RESET)
+# Ana endpoint
+@app.get("/")
+async def root():
+    return {"message": "✅ Hyperbolic API aktif."}
 
-    modeller = choose_models()
+# Chat endpoint
+@app.post("/chat")
+async def chat(request: Request):
+    data = await request.json()
+    user_message = data.get("message", "")
 
-    while True:
-        soru = generate_question()
-        print(Renk.MAVI + f"\nSoru: {soru}\n" + Renk.RESET)
+    if not user_message:
+        return {"success": False, "error": "Mesaj alanı boş"}
 
-        for model in modeller:
-            print(Renk.SARI + f"Model: {model} yanıtlıyor..." + Renk.RESET)
-            yanit = get_nous_response(model, soru)
+    # Hyperbolic API'ye istek gönder
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                "https://api.hyperbolic.xyz/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {HYPERBOLIC_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "nous-hermes-2-mixtral-8x7b-dpo",
+                    "messages": [
+                        {"role": "system", "content": "You are a helpful assistant."},
+                        {"role": "user", "content": user_message}
+                    ],
+                    "max_tokens": 1000,
+                    "temperature": 0.7
+                }
+            )
 
-            if yanit:
-                print(Renk.YESIL + f"\nCevap:\n{yanit}\n" + Renk.RESET)
-                save_log(soru, model, yanit)
-            else:
-                print(Renk.KIRMIZI + "Cevap alınamadı veya hata oluştu.\n" + Renk.RESET)
+            result = response.json()
+            return {
+                "success": True,
+                "response": result["choices"][0]["message"]["content"]
+            }
 
-            print(Renk.SARI + f"{BEKLEME_SANIYE} saniye bekleniyor...\n" + Renk.RESET)
-            time.sleep(BEKLEME_SANIYE)
-
-if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        print(Renk.KIRMIZI + "\nProgram kullanıcı tarafından durduruldu." + Renk.RESET)
-    except Exception as e:
-        print(Renk.KIRMIZI + f"\nBeklenmeyen bir hata oluştu: {e}" + Renk.RESET)
+        except Exception as e:
+            return {"success": False, "error": str(e)}
