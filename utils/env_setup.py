@@ -1,7 +1,6 @@
 import os
 
 def load_env():
-    # Railway ortamında .env dosyası yok ama environment variables var
     hyperbolic = os.getenv("HYPERBOLIC_API_KEY")
     nous = os.getenv("NOUS_API_KEY")
 
