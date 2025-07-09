@@ -1,55 +1,49 @@
-import os
+from core.generator import generate_question
+from core.responder import get_nous_response
+from core.logger import save_log
+from utils.cli import choose_models
+from utils.env_setup import load_env
 import time
-import requests
-from dotenv import load_dotenv
+import os
 
-load_dotenv()
+class Renk:
+    MAVI = '\033[94m'
+    YESIL = '\033[92m'
+    SARI = '\033[93m'
+    KIRMIZI = '\033[91m'
+    RESET = '\033[0m'
 
-HYPERBOLIC_API_KEY = os.getenv("HYPERBOLIC_API_KEY")
-NOUS_API_KEY = os.getenv("NOUS_API_KEY")
+BEKLEME_SANIYE = 30
 
-NOUS_MODELS = [
-    "Hermes-3-Llama-3.1-70B",
-    "Hermes-3-Llama-3.1-405B",
-    "DeepHermes-3-Llama-3-8B-Preview",
-    "DeepHermes-3-Mistral-24B-Preview"
-]
+def main():
+    load_env()
 
-def generate_question():
-    url = "https://api.hyperbolic.ai/v1/question"
-    headers = {"Authorization": f"Bearer {HYPERBOLIC_API_KEY}"}
-    response = requests.get(url, headers=headers)
-    return response.json().get("question", "What is intelligence?")
+    print(Renk.MAVI + "Başlatılıyor..." + Renk.RESET)
+    print(Renk.SARI + "Nous modellerini seçin ve her model için rastgele üretilen sorularla cevaplarını kıyaslayın.\n" + Renk.RESET)
 
-def ask_nous_model(model, prompt):
-    url = "https://api.nous.ai/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {NOUS_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": "You are a helpful AI."},
-            {"role": "user", "content": prompt}
-        ],
-        "max_tokens": 256
-    }
-    response = requests.post(url, headers=headers, json=payload)
-    return response.json()["choices"][0]["message"]["content"]
+    modeller = choose_models()
 
-while True:
-    question = generate_question()
-    print(f"\nQuestion: {question}\n")
+    while True:
+        soru = generate_question()
+        print(Renk.MAVI + f"\nSoru: {soru}\n" + Renk.RESET)
 
-    for model in NOUS_MODELS:
-        print(f"Model: {model}")
-        try:
-            answer = ask_nous_model(model, question)
-            print(answer)
-        except Exception as e:
-            print(f"Error: {e}")
+        for model in modeller:
+            print(Renk.SARI + f"Model: {model} yanıtlıyor..." + Renk.RESET)
+            yanit = get_nous_response(model, soru)
 
-        time.sleep(30)
+            if yanit:
+                print(Renk.YESIL + f"\nCevap:\n{yanit}\n" + Renk.RESET)
+                save_log(soru, model, yanit)
+            else:
+                print(Renk.KIRMIZI + "Cevap alınamadı veya hata oluştu.\n" + Renk.RESET)
 
-    print("\n---\n")
+            print(Renk.SARI + f"{BEKLEME_SANIYE} saniye bekleniyor...\n" + Renk.RESET)
+            time.sleep(BEKLEME_SANIYE)
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print(Renk.KIRMIZI + "\nProgram kullanıcı tarafından durduruldu." + Renk.RESET)
+    except Exception as e:
+        print(Renk.KIRMIZI + f"\nBeklenmeyen bir hata oluştu: {e}" + Renk.RESET)
